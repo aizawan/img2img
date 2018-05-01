@@ -15,7 +15,7 @@ This repository is still in development.
 - CoupledGAN 
 - pix2pix
 - CycleGAN
-- UNIT (I have not clean code and tune hyperparameters yet.)
+- UNIT
 - XGAN
 - BicycleGAN
 - MUNIT
