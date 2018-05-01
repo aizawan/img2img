@@ -1,5 +1,6 @@
 output
 data
+gpu_server
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

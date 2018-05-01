@@ -9,6 +9,7 @@ import logging
 import importlib
 import numpy as np
 import tensorflow as tf
+from PIL import Image
 
 sys.path.insert(0, os.getcwd())
 from unit import inputs
@@ -21,9 +22,8 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_bool('use_gpu_server', True, 'use_gpu_server')
 flags.DEFINE_string('arch', 'model', 'Network architecure')
-flags.DEFINE_string('resdir', 'results', 'Directory to visualize prediction')
-flags.DEFINE_string('outdir', 'output/cat_to_dog', 'Output directory')
-flags.DEFINE_string('checkpoint_dir', 'output/cat_to_dog/model/trained_model',
+flags.DEFINE_string('outdir', 'output/unit', 'Output directory')
+flags.DEFINE_string('checkpoint_dir', 'output/unit/model/trained_model',
     'Directory where to read model checkpoint.')
 flags.DEFINE_string('x_tfrecord',
     '/tmp/data/unit/x-train-1000.tfrecord', 'TFRecord path')
@@ -33,6 +33,9 @@ flags.DEFINE_integer('batch_size', 1, 'Batch size')
 flags.DEFINE_integer('target_height', 256, 'Input height')
 flags.DEFINE_integer('target_width', 256, 'Input width')
 flags.DEFINE_integer('target_channel', 3, 'Input channel')
+flags.DEFINE_integer('num_enc_res_block', 3, 'residual block')
+flags.DEFINE_integer('num_shared_res_block', 2, 'residual block')
+flags.DEFINE_integer('num_dec_res_block', 3, 'residual block')
 flags.DEFINE_integer('num_threads', 8, 'Number of threads to read batches')
 flags.DEFINE_integer('min_after_dequeue', 10, 'min_after_dequeue')
 flags.DEFINE_integer('seed', 1234, 'Random seed')
@@ -77,7 +80,7 @@ def evaluate(res_dir):
                 batch_size=FLAGS.batch_size,
                 num_threads=FLAGS.num_threads,
                 min_after_dequeue=FLAGS.min_after_dequeue,
-                shuffle=False)
+                shuffle=True)
             domain_y = inputs.input_nopair(
                 fn_queue=y_fn_queue,
                 target_height=FLAGS.target_height,
@@ -86,7 +89,7 @@ def evaluate(res_dir):
                 batch_size=FLAGS.batch_size,
                 num_threads=FLAGS.num_threads,
                 min_after_dequeue=FLAGS.min_after_dequeue,
-                shuffle=False)
+                shuffle=True)
 
         # Set placeholder
         phase_train = tf.placeholder(tf.bool, name='phase_train')
@@ -100,6 +103,9 @@ def evaluate(res_dir):
             enc_reuse=False,
             dec_reuse=False,
             ltn_reuse=False,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
             name_encoder='E1',
             name_decoder='G2')
 
@@ -110,8 +116,78 @@ def evaluate(res_dir):
             enc_reuse=False,
             dec_reuse=False,
             ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
             name_encoder='E2',
             name_decoder='G1')
+
+        # Build generator G1: X -> Z -> X
+        xx_img, xx_z = model.generator(
+            inputs=domain_x,
+            phase_train=phase_train,
+            enc_reuse=True,
+            dec_reuse=True,
+            ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
+            name_encoder='E1',
+            name_decoder='G1')
+
+        # Build generator G2: Y -> Z -> Y
+        yy_img, yy_z = model.generator(
+            inputs=domain_y,
+            phase_train=phase_train,
+            enc_reuse=True,
+            dec_reuse=True,
+            ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
+            name_encoder='E2',
+            name_decoder='G2')
+
+        # Backward x: X -> Z -> Y -> Z -> X
+        xyx_img, xyx_z = model.generator(
+            inputs=xy_img,
+            phase_train=phase_train,
+            enc_reuse=True,
+            dec_reuse=True,
+            ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
+            name_encoder='E2',
+            name_decoder='G1')
+
+        # Backward x: Y -> Z -> X -> Z -> Y
+        yxy_img, yxy_z = model.generator(
+            inputs=yx_img,
+            phase_train=phase_train,
+            enc_reuse=True,
+            dec_reuse=True,
+            ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
+            name_encoder='E1',
+            name_decoder='G2')
+
+        plots = {
+            "X": domain_x,
+            "Y": domain_y,
+            "X-Y": xy_img,
+            "Y-X": yx_img,
+            "X-X": xx_img,
+            "Y-Y": yy_img,
+            "X-Y-X": xyx_img,
+            "Y-X-Y": yxy_img
+        }
+
+        plots_list = list(plots.values())
+        plots_key = list(plots.keys())
+        print(plots_key)
 
         init_op = tf.group(tf.global_variables_initializer(),
                            tf.local_variables_initializer())
@@ -126,7 +202,7 @@ def evaluate(res_dir):
             saver.restore(sess, ckpt.model_checkpoint_path)
             step = os.path.splitext(os.path.basename(meta_graph_path))[0]
             res_dir = os.path.join(res_dir, step)
-            make_dirs(res_dir)
+            utils.make_dirs(res_dir)
         else:
             print('No checkpoint file found')
 
@@ -140,34 +216,19 @@ def evaluate(res_dir):
         step = 1
         try:
             while not coord.should_stop():
-                _domain_x, _domain_y, _yx_img, _xy_img = sess.run(
-                        [domain_x, domain_y, yx_img, xy_img],
-                        feed_dict={phase_train: False})
+                outputs = sess.run(plots_list, feed_dict={phase_train: False})
 
-                fig, axes = plt.subplots(nrows=1, ncols=4)
-                axes[0].imshow(_domain_x[0] * 0.5 + 0.5)
-                axes[0].set_title('X')
-                axes[0].set_axis_off()
+                for v, k in zip(outputs, plots_key):
+                    _res_dir = os.path.join(res_dir, k)
+                    _res_path = os.path.join(_res_dir, "{}.png".format(step))
+                    utils.make_dirs(_res_dir)
 
-                axes[1].imshow(_domain_y[0] * 0.5 + 0.5)
-                axes[1].set_title('Y')
-                axes[1].set_axis_off()
+                    v = np.squeeze(np.uint8((v * 0.5 + 0.5) * 255))
+                    img = Image.fromarray(v)
+                    img.save(_res_path)
 
-                axes[2].imshow(_yx_img[0] * 0.5 + 0.5)
-                axes[2].set_title('Y=G1(E2(X))')
-                axes[2].set_axis_off()
-
-                axes[3].imshow(_xy_img[0] * 0.5 + 0.5)
-                axes[3].set_title('X=G2(E1(Y))')
-                axes[3].set_axis_off()
-
-                res_path = os.path.join(res_dir, '{}.png'.format(step))
-                plt.savefig(res_path, transparent=True)
-                plt.clf()
-                plt.close('all')
-
-                logging.info('Save {}'.format(res_path))
-                print('Save {}'.format(res_path))
+                    logging.info("Save {}".format(_res_path))
+                    print("Save {}".format(_res_path))
 
                 step += 1
                 if FLAGS.num_sample < step: break

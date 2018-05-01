@@ -40,7 +40,9 @@ flags.DEFINE_integer('seed', 1234, 'Random seed')
 flags.DEFINE_integer('snapshot', 20000, 'Snapshot')
 
 # Hyperprameters
-flags.DEFINE_integer('num_res_block', 4, 'residual block')
+flags.DEFINE_integer('num_enc_res_block', 3, 'residual block')
+flags.DEFINE_integer('num_shared_res_block', 2, 'residual block')
+flags.DEFINE_integer('num_dec_res_block', 3, 'residual block')
 flags.DEFINE_float('generator_lr', 1e-4, 'learning rate')
 flags.DEFINE_float('discriminator_lr', 1e-4, 'learning rate')
 flags.DEFINE_float('beta1', 0.5, 'adam beta1')
@@ -130,6 +132,9 @@ def train(model_dir, summary_dir):
             enc_reuse=False,
             dec_reuse=False,
             ltn_reuse=False,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
             name_encoder='E1',
             name_decoder='G2')
 
@@ -140,6 +145,9 @@ def train(model_dir, summary_dir):
             enc_reuse=False,
             dec_reuse=False,
             ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
             name_encoder='E2',
             name_decoder='G1')
 
@@ -150,6 +158,9 @@ def train(model_dir, summary_dir):
             enc_reuse=True,
             dec_reuse=True,
             ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
             name_encoder='E1',
             name_decoder='G1')
 
@@ -160,6 +171,9 @@ def train(model_dir, summary_dir):
             enc_reuse=True,
             dec_reuse=True,
             ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
             name_encoder='E2',
             name_decoder='G2')
 
@@ -170,6 +184,9 @@ def train(model_dir, summary_dir):
             enc_reuse=True,
             dec_reuse=True,
             ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
             name_encoder='E2',
             name_decoder='G1')
 
@@ -180,6 +197,9 @@ def train(model_dir, summary_dir):
             enc_reuse=True,
             dec_reuse=True,
             ltn_reuse=True,
+            num_enc_res_block=FLAGS.num_enc_res_block,
+            num_shared_res_block=FLAGS.num_shared_res_block,
+            num_dec_res_block=FLAGS.num_dec_res_block,
             name_encoder='E1',
             name_decoder='G2')
 
@@ -231,11 +251,11 @@ def train(model_dir, summary_dir):
 
         # Cycle consistency loss
         cycle_loss_x = FLAGS.lambda_cycle * recon_loss_xyx + \
-                       FLAGS.lambda_cycle_kl * kl_xyx + \
-                       FLAGS.lambda_cycle_kl * kl_xy
+                       FLAGS.lambda_cycle_kl * kl_xyx # + \
+                    #    FLAGS.lambda_cycle_kl * kl_xy
         cycle_loss_y = FLAGS.lambda_cycle * recon_loss_yxy + \
-                       FLAGS.lambda_cycle_kl * kl_yxy + \
-                       FLAGS.lambda_cycle_kl * kl_yx
+                       FLAGS.lambda_cycle_kl * kl_yxy # + \
+                    #    FLAGS.lambda_cycle_kl * kl_yx
 
         # Optimized generator loss
         opt_generator_loss = generator_loss + \
@@ -336,7 +356,7 @@ def train(model_dir, summary_dir):
                         message = 'Saving...\n' + \
                             'Done training for {} steps.'.format(step)
                         logging.info(message)
-                
+
                     if step == FLAGS.iteration:
                         saver.save(sess, model_dir + '/model', global_step=step)
                         message = 'Saving...\n' + \
@@ -365,7 +385,7 @@ def main(_):
     utils.make_dirs(trained_model)
     utils.print_arguments(
         args=FLAGS.__flags, log_fn=os.path.join(outdir, 'args.log'))
-    
+
     logging.basicConfig(
         format='%(asctime)s [%(levelname)s] %(message)s',
         filename='{}/train.log'.format(outdir),

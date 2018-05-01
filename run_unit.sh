@@ -43,14 +43,14 @@ python datasets/multispectrum.py \
   --root data/multispectrum/images \
   --outdir /tmp/data/img2img \
   --mode test-day  \
-  --num_samples 3000
+  --num_samples 300
 
 python datasets/multispectrum.py \
   --dataset multispectrum-lwir \
   --root data/multispectrum/images \
   --outdir /tmp/data/img2img \
   --mode test-day  \
-  --num_samples 3000
+  --num_samples 300
 
 
 ###### Evaluate UNIT ######

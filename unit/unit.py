@@ -32,7 +32,7 @@ def generator(inputs, phase_train,
             name_encoder=name_encoder)
 
         # Shared latent space using weight sharing.
-        latent_vars = shared_latent_space(
+        fmaps, latent_vars = shared_latent_space(
             inputs=fmaps,
             num_shared_res_block=num_shared_res_block,
             phase_train=phase_train,
@@ -41,7 +41,7 @@ def generator(inputs, phase_train,
 
         # Decoder reconstracts another domain image from shared latent space.
         reconstracted_img = decoder(
-            inputs=latent_vars,
+            inputs=fmaps,
             out_c=out_c,
             num_dec_res_block=num_dec_res_block,
             phase_train=phase_train,
@@ -71,16 +71,22 @@ def shared_latent_space(inputs, num_shared_res_block, phase_train, reuse,
     with tf.variable_scope(name_shared_space):
         e = inputs
         for i in range(num_shared_res_block):
-            e = Rk(e, 128, reuse, name='R128_{}'.format(i + 1))
-        e = gaussian_noise(e, phase_train, name='gaussian_noise')
-    return e
+            e = Rk(e, 128, reuse, name='R128_e_{}'.format(i + 1))
+        ltn = gaussian_noise(e, phase_train, name='gaussian_noise')
+        d = ltn
+        for i in range(num_shared_res_block):
+            d = Rk(d, 128, reuse, name='R128_d_{}'.format(i + 1))
+    return d, ltn
 
 
 def decoder(inputs, out_c, num_dec_res_block, phase_train, reuse, name_decoder):
     """ decoder
     """
     with tf.variable_scope(name_decoder):
-        d = uk(inputs, 64, reuse, name='u64') # [bs, 64, 64, 64]
+        d = inputs
+        for i in range(num_dec_res_block):
+            d = Rk(d, 128, reuse, name='R128_{}'.format(i + 1))
+        d = uk(d, 64, reuse, name='u64') # [bs, 64, 64, 64]
         d = uk(d, 32, reuse, name='u32') # [bs, 128, 128, 32]
         d = c7s1_k(d, out_c, reuse, activation=False, is_norm=False,
                    name='c7s1_{}'.format(out_c)) # [bs, 128, 128, out_c]
